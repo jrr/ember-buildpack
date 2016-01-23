@@ -9,8 +9,8 @@ cache_dir=$2
 env_dir=$3
 bp_dir=$(cd $(dirname $0); cd ..; pwd)
 
-outer_dir = $build_dir
-build_dir = $outer_dir/$(cat $outer_dir/.embedded-ember-dir)
+outer_dir=$build_dir
+build_dir=$outer_dir/$(cat $outer_dir/.embedded-ember-dir)
 
 # Fix leak
 unset GIT_DIR
