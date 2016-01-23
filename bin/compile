@@ -9,7 +9,8 @@ cache_dir=$2
 env_dir=$3
 bp_dir=$(cd $(dirname $0); cd ..; pwd)
 
-app_dir=$build_dir/$(cat $build_dir/.embedded-ember-dir)
+outer_dir = $build_dir
+build_dir = $outer_dir/$(cat $outer_dir/.embedded-ember-dir)
 
 # Fix leak
 unset GIT_DIR
@@ -17,18 +18,18 @@ unset GIT_DIR
 # Load some convenience functions like status(), echo(), and indent()
 source $bp_dir/bin/common.sh
 
-status "Compiling an embedded Ember application from $app_dir"
+status "Compiling an embedded Ember application from $build_dir"
 
 export_env_dir $env_dir
 build_env=${EMBER_ENV:-production}
 
-mkdir -p $app_dir/vendor
+mkdir -p $build_dir/vendor
 
 # Output npm debug info on error
 trap cat_npm_debug_log ERR
 
 # Look in package.json's engines.node field for a semver range
-semver_range=$(cat $app_dir/package.json | $bp_dir/vendor/jq -r .engines.node)
+semver_range=$(cat $build_dir/package.json | $bp_dir/vendor/jq -r .engines.node)
 
 # Resolve node version using semver.io
 node_version=$(curl --silent --get --data-urlencode "range=${semver_range}" https://semver.io/node/resolve)
@@ -54,13 +55,13 @@ fi
 # Download node from Heroku's S3 mirror of nodejs.org/dist
 status "Downloading and installing node"
 node_url="http://s3pository.heroku.com/node/v$node_version/node-v$node_version-linux-x64.tar.gz"
-curl $node_url -s -o - | tar xzf - -C $app_dir
+curl $node_url -s -o - | tar xzf - -C $build_dir
 
 # Move node (and npm) into ./vendor and make them executable
-mkdir -p $app_dir/vendor
-mv $app_dir/node-v$node_version-linux-x64 $app_dir/vendor/node
-chmod +x $app_dir/vendor/node/bin/*
-PATH=$app_dir/vendor/node/bin:$PATH
+mkdir -p $build_dir/vendor
+mv $build_dir/node-v$node_version-linux-x64 $build_dir/vendor/node
+chmod +x $build_dir/vendor/node/bin/*
+PATH=$build_dir/vendor/node/bin:$PATH
 
 # Optionally bootstrap a different npm version
 npm_engine=$($bp_dir/vendor/jq -r .engines.npm $build_dir/package.json)
@@ -84,17 +85,17 @@ else
   status "Using default npm version: `npm --version`"
 fi
 
-cd $app_dir
+cd $build_dir
 
 # If node_modules directory is checked into source control then
 # rebuild any native deps. Otherwise, restore from the build cache.
-if test -d $app_dir/node_modules; then
+if test -d $build_dir/node_modules; then
   status "Found existing node_modules directory; skipping cache"
   status "Rebuilding any native dependencies"
   npm rebuild 2>&1 | indent
 elif test -d $cache_dir/node/node_modules; then
   status "Restoring node_modules directory from cache"
-  cp -r $cache_dir/node/node_modules $app_dir/
+  cp -r $cache_dir/node/node_modules $build_dir/
 
   status "Pruning cached dependencies not specified in package.json"
   npm prune 2>&1 | indent
@@ -106,16 +107,16 @@ elif test -d $cache_dir/node/node_modules; then
 fi
 
 # Restore bower_components from cache if it exists
-if test -d $app_dir/bower_components; then
+if test -d $build_dir/bower_components; then
   status "Found existing bower_components directory; skipping cache"
 elif test -d $cache_dir/bower_components; then
   status "Restoring bower_components directory from cache"
-  cp -r $cache_dir/bower_components $app_dir/
+  cp -r $cache_dir/bower_components $build_dir/
 fi
 
 status "Installing bower which is required by other dependencies"
-npm install bower --quiet --userconfig $app_dir/.npmrc 2>&1 | indent
-PATH=$app_dir/node_modules/bower/bin:$PATH
+npm install bower --quiet --userconfig $build_dir/.npmrc 2>&1 | indent
+PATH=$build_dir/node_modules/bower/bin:$PATH
 
 if [ -d "$env_dir" ]; then
   status "Exporting config vars to environment"
@@ -139,19 +140,19 @@ fi
 
 status "Installing dependencies"
 # Make npm output to STDOUT instead of its default STDERR
-npm install --quiet --userconfig $app_dir/.npmrc 2>&1 | indent
+npm install --quiet --userconfig $build_dir/.npmrc 2>&1 | indent
 
 # Add the project's and ember-cli's dependencies' binaries to the PATH
-PATH=$app_dir/node_modules/.bin:$app_dir/node_modules/ember-cli/node_modules/.bin:$PATH
+PATH=$build_dir/node_modules/.bin:$build_dir/node_modules/ember-cli/node_modules/.bin:$PATH
 
 status "Pruning cached bower dependencies not specified in bower.json"
 bower prune 2>&1 | indent
 
 # Persist goodies like node-version in the slug
-mkdir -p $app_dir/.heroku
+mkdir -p $build_dir/.heroku
 
 # Save resolved node version in the slug for later reference
-echo $node_version > $app_dir/.heroku/node-version
+echo $node_version > $build_dir/.heroku/node-version
 
 # Purge node-related cached content, being careful not to purge the top-level
 # cache, for the sake of heroku-buildpack-multi apps.
@@ -160,17 +161,17 @@ rm -rf $cache_dir/node
 mkdir -p $cache_dir/node
 
 # If app has a node_modules directory, cache it.
-if test -d $app_dir/node_modules; then
+if test -d $build_dir/node_modules; then
   status "Caching node_modules directory for future builds"
-  cp -r $app_dir/node_modules $cache_dir/node
+  cp -r $build_dir/node_modules $cache_dir/node
 fi
 
 # Copy goodies to the cache
-cp -r $app_dir/.heroku $cache_dir/node
+cp -r $build_dir/.heroku $cache_dir/node
 
 status "Cleaning up node-gyp and npm artifacts"
-rm -rf "$app_dir/.node-gyp"
-rm -rf "$app_dir/.npm"
+rm -rf "$build_dir/.node-gyp"
+rm -rf "$build_dir/.npm"
 
 bower install --quiet | indent
 
@@ -182,26 +183,26 @@ if [ "$GIT_SSH_KEY" != "" ]; then
 fi
 
 # If app has a bower_components directory, cache it.
-if test -d $app_dir/bower_components; then
+if test -d $build_dir/bower_components; then
   status "Caching bower_components directory for future builds"
-  cp -r $app_dir/bower_components $cache_dir/
+  cp -r $build_dir/bower_components $cache_dir/
 fi
 
-if test -f $app_dir/hooks/before_hook.sh; then
+if test -f $build_dir/hooks/before_hook.sh; then
   status "Before hook detected. Running..."
-  source $app_dir/hooks/before_hook.sh
+  source $build_dir/hooks/before_hook.sh
 fi
 
 status "Building Ember CLI application $build_env distribution"
 node_modules/ember-cli/bin/ember build --environment $build_env | indent
 
-if test -f $app_dir/hooks/after_hook.sh; then
+if test -f $build_dir/hooks/after_hook.sh; then
   status "After hook detected. Running..."
-  source $app_dir/hooks/after_hook.sh
+  source $build_dir/hooks/after_hook.sh
 fi
 
 # Leave dist behind -- it contains the final compiled assets
 # Leave app beind -- the Rails app slurps in some of the CSS
-for n in `ls $app_dir | grep -v dist | grep -v app`; do
+for n in `ls $build_dir | grep -v dist | grep -v app`; do
   rm -rf "$n"
 done
