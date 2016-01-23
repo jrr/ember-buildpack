@@ -66,7 +66,7 @@ Setting `BASIC_AUTH_USER` and `BASIC_AUTH_PASSWORD` in your Heroku application w
 
 ### Force HTTPS/SSL
 
-For most Ember applications that make any kind of authenticated requests HTTPS should be used. Enable this feature in Nginx by setting `FORCE_HTTPS`:
+For most Ember applications that make any kind of authenticated requests HTTPS should be used. It supports the headers `X-Forwarded-Proto` ([used by Heroku](https://devcenter.heroku.com/articles/http-routing#heroku-headers)) and `CF-Visitor` ([used by CloudFlare](https://support.cloudflare.com/hc/en-us/articles/200170536-How-do-I-redirect-HTTPS-traffic-with-Flexible-SSL-and-Apache-)). Enable this feature in Nginx by setting `FORCE_HTTPS`:
 
     $ heroku config:set FORCE_HTTPS=true
 
@@ -99,6 +99,12 @@ If present, the buildpack expects the base64 encoded contents of a private key w
 
 Private NPM dependency URLs must be in the form of `git+ssh://git@github.com:[user]/[repo].git`. Private Bower dependency URLs must be in the form of `git@github.com:[user]/[repo].git`. Either NPM or Bower URLs may have a trailing `#semver`.
 
+### Environment
+
+Choose the environment you want to build by setting:
+
+    $ heroku config:set EMBER_ENV=production
+
 ### Before and After Hooks
 
 Have the buildpack run your own scripts before and after the `ember build` by creating a `hooks/before_hook.sh` or `hooks/after_hook.sh` file in your Ember CLI application:
@@ -124,7 +130,7 @@ For an after build hook:
 ```bash
 #!/usr/bin/env bash
 
-export GEM_HOME=$build_dir/.gem/ruby/1.9.1
+export GEM_HOME=$build_dir/.gem/ruby/2.2.0
 export PATH=$GEM_HOME/bin:$PATH
 
 if test -d $cache_dir/ruby/.gem; then
@@ -166,7 +172,7 @@ Clean your project's dependencies:
     $ npm cache clear
     $ bower cache clean
     $ rm -rf node_modules bower_components
-    $ npm install
+    $ npm install --no-optional
     $ bower install
 
 Be sure to save any Bower or NPM resolutions. Now, let's build your Ember CLI application locally:
@@ -182,3 +188,32 @@ Check your `git status` and see if that process has made any changes to your app
 3. Commit your changes (`git commit -am 'Add some feature'`)
 4. Push to the branch (`git push origin my-new-feature`)
 5. Create new Pull Request
+
+## Contributors
+
+A special thanks to everyone who maintains and helps out on the project!
+
+- Aaron Chambers
+- Aaron Ortbals
+- Aaron Renner
+- Adriaan
+- Adriaan van Rossum
+- Bill Curtis
+- Brett Chalupa
+- Chris Santero
+- John Griffin
+- Jonas Brusman
+- Jonathan Johnson
+- Jonathan Zempel
+- Jordan Morano
+- Juan Pablo Pinilla Ossa
+- Kori Roys
+- Matt McGinnis
+- Optimal Cadence
+- Peter Brown
+- Ryan LeFevre
+- Tony Coconate
+- harianus
+- sbl
+
+_Generated with: `git log --format='%aN' | sort -u`._

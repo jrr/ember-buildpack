@@ -23,6 +23,7 @@ status "Compiling an embedded Ember application from $build_dir"
 
 export_env_dir $env_dir
 build_env=${EMBER_ENV:-production}
+status "Building environment: $build_env"
 
 mkdir -p $build_dir/vendor
 
@@ -64,6 +65,27 @@ mv $build_dir/node-v$node_version-linux-x64 $build_dir/vendor/node
 chmod +x $build_dir/vendor/node/bin/*
 PATH=$build_dir/vendor/node/bin:$PATH
 
+# Optionally bootstrap a different npm version
+npm_engine=$(cat $build_dir/package.json | $bp_dir/vendor/jq -r .engines.npm)
+if [ "$npm_engine" != "" ]; then
+  if ! [[ "$npm_engine" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    status "Resolving npm version ${npm_engine} via semver.io..."
+    npm_engine=$(curl --silent --get --data-urlencode "range=${npm_engine}" https://semver.herokuapp.com/npm/resolve)
+  fi
+  if [[ `npm --version` == "$npm_engine" ]]; then
+    status "npm `npm --version` already installed with node"
+  else
+    status "Downloading and installing npm $npm_engine (replacing version `npm --version`)..."
+    npm install --unsafe-perm --quiet -g npm@$npm_engine 2>&1 >/dev/null | indent
+  fi
+  if [ "${npm_engine:0:1}" -lt "2" ]; then
+    latest_npm=$(curl --silent --get https://semver.herokuapp.com/npm/stable)
+    protip "This version of npm ($npm_engine) has several known issues - consider upgrading to the latest release ($latest_npm)"
+  fi
+else
+  status "Using default npm version: `npm --version`"
+fi
+
 if [ "$skip_nginx" != true ]; then
 status "Downloading and installing nginx"
 nginx_url=https://s3.amazonaws.com/devmynd-github/heroku-nginx-1.6.0.tar.gz
@@ -81,28 +103,6 @@ if [[ ! -f $build_dir/config/nginx.conf.erb ]]; then
 else
   status "Custom nginx config found"
 fi
-fi
-
-# Optionally bootstrap a different npm version
-npm_engine=$($bp_dir/vendor/jq -r .engines.npm $build_dir/package.json)
-
-if [ "$npm_engine" != "null" ]; then
-  if ! [[ "$npm_engine" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    status "Resolving npm version ${npm_engine} via semver.io..."
-    npm_engine=$(curl --silent --get --data-urlencode "range=${npm_engine}" https://semver.herokuapp.com/npm/resolve)
-  fi
-  if [[ `npm --version` == "$npm_engine" ]]; then
-    status "npm `npm --version` already installed with node"
-  else
-    status "Downloading and installing npm $npm_engine (replacing version `npm --version`)..."
-    npm install --unsafe-perm --quiet -g npm@$npm_engine 2>&1 >/dev/null | indent
-  fi
-  if [ "${npm_engine:0:1}" -lt "2" ]; then
-    latest_npm=$(curl --silent --get https://semver.herokuapp.com/npm/stable)
-    protip "This version of npm ($npm_engine) has several known issues - consider upgrading to the latest release ($latest_npm)"
-  fi
-else
-  status "Using default npm version: `npm --version`"
 fi
 
 cd $build_dir
@@ -149,6 +149,9 @@ if [ "$GIT_SSH_KEY" != "" ]; then
   # launch ssh-agent, we'll use it to serve our ssh key
   # and kill it towards the end of the buildpack's run
   eval `ssh-agent -s`
+
+  # ssh-add doesn't like the default 644
+  chmod 600 id_rsa
   # We're not supporting passphrases at this time.  We could pull that in
   # from config as well, but then we'd have to setup expect or some other
   # terminal automation tool to feed it into ssh-add.
@@ -160,7 +163,7 @@ fi
 
 status "Installing dependencies"
 # Make npm output to STDOUT instead of its default STDERR
-npm install --quiet --userconfig $build_dir/.npmrc 2>&1 | indent
+npm install --quiet --no-optional --userconfig $build_dir/.npmrc 2>&1 | indent
 
 # Add the project's and ember-cli's dependencies' binaries to the PATH
 PATH=$build_dir/node_modules/.bin:$build_dir/node_modules/ember-cli/node_modules/.bin:$PATH
