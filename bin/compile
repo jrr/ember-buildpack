@@ -11,14 +11,14 @@ bp_dir=$(cd $(dirname $0); cd ..; pwd)
 
 outer_dir=$build_dir
 build_dir=$outer_dir/$(cat $outer_dir/.embedded-ember-dir)
+skip_nginx=true
+status "Compiling an embedded Ember application from $build_dir"
 
 # Fix leak
 unset GIT_DIR
 
 # Load some convenience functions like status(), echo(), and indent()
 source $bp_dir/bin/common.sh
-
-status "Compiling an embedded Ember application from $build_dir"
 
 export_env_dir $env_dir
 build_env=${EMBER_ENV:-production}
@@ -62,6 +62,25 @@ mkdir -p $build_dir/vendor
 mv $build_dir/node-v$node_version-linux-x64 $build_dir/vendor/node
 chmod +x $build_dir/vendor/node/bin/*
 PATH=$build_dir/vendor/node/bin:$PATH
+
+if [ "$skip_nginx" != true ]; then
+status "Downloading and installing nginx"
+nginx_url=https://s3.amazonaws.com/devmynd-github/heroku-nginx-1.6.0.tar.gz
+curl $nginx_url -s -o - | tar xzf - -C $build_dir/vendor
+
+status "Adding boot script"
+cp $bp_dir/bin/boot.sh $build_dir
+
+status "Copying configs"
+mkdir -p $build_dir/config
+cp $bp_dir/config/htpasswd.rb $build_dir/config
+cp $bp_dir/config/mime.types $build_dir/config
+if [[ ! -f $build_dir/config/nginx.conf.erb ]]; then
+  cp $bp_dir/config/nginx.conf.erb $build_dir/config
+else
+  status "Custom nginx config found"
+fi
+fi
 
 # Optionally bootstrap a different npm version
 npm_engine=$($bp_dir/vendor/jq -r .engines.npm $build_dir/package.json)
